@@ -102,8 +102,14 @@ public class MainActivity extends Activity {
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri url = request.getUrl();
                 if ("appassets.androidplatform.net".equals(url.getHost())) return false;
-                // Any outside link opens in the normal browser instead of inside the app.
-                try { startActivity(new Intent(Intent.ACTION_VIEW, url)); } catch (Exception ignored) { }
+                // Outside links open in your normal browser, but only when you tap one on the
+                // app's own page. Content in the output view can never open a link by itself,
+                // so it can't carry your data out of the app in a web address.
+                String scheme = url.getScheme() == null ? "" : url.getScheme().toLowerCase();
+                boolean web = scheme.equals("https") || scheme.equals("http");
+                if (web && request.isForMainFrame() && request.hasGesture()) {
+                    try { startActivity(new Intent(Intent.ACTION_VIEW, url)); } catch (Exception ignored) { }
+                }
                 return true;
             }
 
@@ -135,6 +141,12 @@ public class MainActivity extends Activity {
             @Override
             public void onPermissionRequest(PermissionRequest request) {
                 runOnUiThread(() -> {
+                    // Only the app's own page may ask, never content shown in the output view.
+                    Uri origin = request.getOrigin();
+                    if (origin == null || !ORIGIN.equals(origin.getScheme() + "://" + origin.getHost())) {
+                        request.deny();
+                        return;
+                    }
                     boolean wantsCamera = false;
                     for (String r : request.getResources()) {
                         if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(r)) wantsCamera = true;
@@ -168,7 +180,9 @@ public class MainActivity extends Activity {
     private boolean readShare(Intent intent) {
         if (intent == null || !Intent.ACTION_SEND.equals(intent.getAction())) return false;
         Uri stream = intent.getParcelableExtra(Intent.EXTRA_STREAM);
-        if (stream != null) {
+        // Only accept files offered through Android's content system. A "file://" address
+        // could trick the app into opening its own private files.
+        if (stream != null && "content".equals(stream.getScheme())) {
             pendingSharedFile = stream;
             return true;
         }
