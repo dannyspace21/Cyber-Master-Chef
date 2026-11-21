@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#F2F4F8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#141A24" media="(prefers-color-scheme: dark)">
+<title>Cyber Master Chef</title>
+<style>
+:root{
+  color-scheme: light;
+  --bg:#F2F4F8; --surface:#FFFFFF; --surface-2:#E9EDF4; --ink:#17202E; --muted:#5B6678; --line:#D3D9E3;
+  --accent:#2459D6; --accent-ink:#FFFFFF; --accent-soft:#C9D7F7;
+  --warn:#8A5200; --warn-soft:#FBEBD0; --err:#B3261E; --err-soft:#FADBD8;
+  --mono: ui-monospace, "SF Mono", "Roboto Mono", "Droid Sans Mono", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    color-scheme: dark;
+    --bg:#141A24; --surface:#1C2431; --surface-2:#253042; --ink:#E6EAF1; --muted:#9AA5B8; --line:#2F3B4F;
+    --accent:#7FA6FF; --accent-ink:#0F1622; --accent-soft:#2B3F68;
+    --warn:#F2B661; --warn-soft:#3A2E1A; --err:#FF8A80; --err-soft:#3D2023;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.45;-webkit-tap-highlight-color:transparent}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.top{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:12px;padding:12px 16px;padding-top:max(12px,env(safe-area-inset-top));background:var(--bg);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:19px;letter-spacing:-.01em;margin:0}
+.brand svg{color:var(--accent);flex:none}
+.top .meta{margin-left:auto}
+
+main{display:grid;gap:16px;padding:16px;padding-bottom:calc(32px + env(safe-area-inset-bottom));max-width:1280px;margin:0 auto;grid-template-columns:minmax(0,1fr);grid-template-areas:"in" "recipe" "out"}
+#inPanel{grid-area:in} #recipePanel{grid-area:recipe} #outPanel{grid-area:out}
+@media (min-width:960px){
+  main{grid-template-columns:minmax(320px,390px) minmax(0,1fr);grid-template-areas:"recipe in" "recipe out";align-items:start}
+  #recipePanel{position:sticky;top:76px;max-height:calc(100vh - 96px);overflow:auto}
+}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px}
+.panel-head{display:flex;align-items:center;gap:10px;margin-bottom:10px;min-height:36px;flex-wrap:wrap}
+.panel-head h2{font-size:16px;font-weight:650;margin:0}
+.meta{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}
+.tools{margin-left:auto;display:flex;gap:6px}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 14px;font-size:14px;font-weight:550;min-height:36px;cursor:pointer}
+.btn:active{background:var(--surface-2)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+
+textarea,#output{width:100%;font-family:var(--mono);font-size:14px;line-height:1.55;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px}
+textarea{min-height:150px;resize:vertical;display:block}
+#output{min-height:150px;margin:0;white-space:pre-wrap;overflow-wrap:anywhere;max-height:65vh;overflow:auto}
+#output:empty::before{content:"The result shows up here as you type.";color:var(--muted);font-family:var(--sans)}
+
+/* The recipe: a vertical pipeline, data flows top to bottom */
+.pipe{list-style:none;margin:0;padding:0;position:relative}
+.pipe:has(.step + .step)::before{content:"";position:absolute;left:9px;top:22px;bottom:30px;width:2px;background:var(--accent-soft)}
+.step{position:relative;padding-left:30px;margin-bottom:10px}
+.node{position:absolute;left:3px;top:16px;width:14px;height:14px;border-radius:50%;background:var(--surface);border:2px solid var(--accent);transition:background .15s}
+.step.done .node{background:var(--accent)}
+.step.off .node{border-style:dashed;border-color:var(--muted);background:var(--surface)}
+.step.err .node{background:var(--err);border-color:var(--err)}
+.step-box{background:var(--surface-2);border-radius:12px;padding:6px 6px 10px 12px}
+.step.off .step-box{opacity:.55}
+.step.err .step-box{box-shadow:inset 0 0 0 1.5px var(--err)}
+.step-head{display:flex;align-items:center;gap:2px}
+.step-title{flex:1;min-width:0;padding:4px 0}
+.step-name{font-weight:600;font-size:15px}
+.step-cat{display:block;color:var(--muted);font-size:12px}
+.icon{width:34px;height:34px;display:grid;place-items:center;border:0;background:transparent;border-radius:8px;color:var(--muted);cursor:pointer;flex:none}
+.icon:hover{background:var(--surface);color:var(--ink)}
+.icon:disabled{opacity:.3;cursor:default;background:transparent}
+.args{display:grid;gap:8px;margin-top:6px;padding-right:6px;grid-template-columns:repeat(auto-fit,minmax(130px,1fr))}
+.arg{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+.arg input,.arg select{font:inherit;font-size:15px;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-height:42px;width:100%}
+.add{width:100%;margin-top:2px;padding:12px;border:1.5px dashed var(--accent);border-radius:12px;background:transparent;color:var(--accent);font-weight:650;font-size:15px;cursor:pointer}
+.add:active{background:var(--accent-soft)}
+.empty{color:var(--muted);font-size:14px;padding:2px 0 12px}
+
+.suggest{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:10px;font-size:13px;color:var(--muted)}
+.suggest:empty{display:none}
+.chip{border:1px solid var(--accent);color:var(--accent);background:transparent;border-radius:999px;padding:5px 12px;font-size:13px;font-weight:600;cursor:pointer}
+.chip:active{background:var(--accent-soft)}
+.notice{margin-top:10px;padding:10px 12px;border-radius:10px;font-size:14px}
+.notice:empty{display:none}
+.notice.warn{background:var(--warn-soft);color:var(--warn)}
+.notice.err{background:var(--err-soft);color:var(--err)}
+
+.sheet{position:fixed;inset:0;z-index:20;display:flex;align-items:flex-end;justify-content:center}
+.sheet[hidden]{display:none}
+.backdrop{position:absolute;inset:0;background:rgb(10 14 22 / .5)}
+.sheet-body{position:relative;width:100%;max-width:640px;height:88vh;background:var(--surface);border-radius:20px 20px 0 0;display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom);animation:up .22s ease-out}
+@keyframes up{from{transform:translateY(28px);opacity:.5}}
+@media (min-width:700px){.sheet{align-items:center}.sheet-body{border-radius:20px;height:80vh}}
+.sheet-top{padding:10px 16px 10px;display:flex;flex-direction:column;gap:10px;border-bottom:1px solid var(--line)}
+.grab{width:40px;height:4px;border-radius:2px;background:var(--line);align-self:center}
+.sheet-row{display:flex;gap:8px}
+.search{font:inherit;font-size:16px;padding:10px 14px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink);width:100%;min-height:44px}
+.cats{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+.cats::-webkit-scrollbar{display:none}
+.cat{flex:none;border:1px solid var(--line);background:transparent;border-radius:999px;padding:6px 12px;font-size:14px;cursor:pointer;color:var(--ink)}
+.cat[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.oplist{overflow-y:auto;padding:4px 8px 20px;overscroll-behavior:contain;flex:1}
+.oplist h3{font-size:13px;color:var(--muted);font-weight:600;margin:16px 8px 4px}
+.opitem{display:block;width:100%;text-align:left;border:0;background:transparent;padding:10px 8px;border-radius:10px;cursor:pointer}
+.opitem:hover,.opitem:active{background:var(--surface-2)}
+.opitem b{display:block;font-weight:600;font-size:15px}
+.opitem span{display:block;color:var(--muted);font-size:13px;margin-top:1px}
+.nores{color:var(--muted);padding:20px 8px;font-size:14px}
+
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:30;max-width:90vw}
+.toast.show{opacity:1}
+@media (prefers-reduced-motion:reduce){.sheet-body{animation:none}.toast,.node{transition:none}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <h1 class="brand">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M7 14.5V20h10v-5.5"/><path d="M7 14.5a4 4 0 0 1-1.2-7.8A4.5 4.5 0 0 1 12 3.5a4.5 4.5 0 0 1 6.2 3.2 4 4 0 0 1-1.2 7.8z"/><path d="M7 17h10"/></svg>
+    Cyber Master Chef
+  </h1>
+  <span class="meta" id="opCount"></span>
+</header>
+
+<main>
+  <section class="panel" id="inPanel" aria-labelledby="inH">
+    <div class="panel-head">
+      <h2 id="inH">Input</h2>
+      <span class="meta" id="inMeta"></span>
+      <div class="tools">
+        <button class="btn" id="pasteBtn">Paste</button>
+        <button class="btn" id="clearInBtn">Clear</button>
+      </div>
+    </div>
+    <textarea id="input" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="Type or paste text, a hash, Base64, a timestamp, an IP range…"></textarea>
+  </section>
+
+  <section class="panel" id="recipePanel" aria-labelledby="recH">
+    <div class="panel-head">
+      <h2 id="recH">Recipe</h2>
+      <span class="meta" id="recMeta"></span>
+      <div class="tools"><button class="btn" id="clearRecBtn">Clear</button></div>
+    </div>
+    <ol class="pipe" id="recipe"></ol>
+    <button class="add" id="addBtn">+ Add operation</button>
+  </section>
+
+  <section class="panel" id="outPanel" aria-labelledby="outH">
+    <div class="panel-head">
+      <h2 id="outH">Output</h2>
+      <span class="meta" id="outMeta"></span>
+      <div class="tools">
+        <button class="btn" id="rerunBtn" hidden>Run again</button>
+        <button class="btn" id="moveBtn">Move to input</button>
+        <button class="btn primary" id="copyBtn">Copy</button>
+      </div>
+    </div>
+    <pre id="output" tabindex="0" aria-live="polite"></pre>
+    <div class="notice" id="notice"></div>
+    <div class="suggest" id="suggest"></div>
+  </section>
+</main>
+
+<div class="sheet" id="sheet" hidden>
+  <div class="backdrop" id="backdrop"></div>
+  <div class="sheet-body" role="dialog" aria-modal="true" aria-label="Add operation">
+    <div class="sheet-top">
+      <div class="grab" aria-hidden="true"></div>
+      <div class="sheet-row">
+        <input class="search" id="search" type="search" placeholder="Search operations" autocomplete="off" spellcheck="false">
+        <button class="btn" id="closeSheet">Close</button>
+      </div>
+      <div class="cats" id="cats" role="toolbar" aria-label="Categories"></div>
+    </div>
+    <div class="oplist" id="oplist"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script id="ops">
+/* ===================== Helpers ===================== */
+const TE = new TextEncoder(), TD = new TextDecoder();
+const str = b => TD.decode(b);
+const by = s => TE.encode(s);
+function latin1(b){let s='';for(let i=0;i<b.length;i+=8192)s+=String.fromCharCode.apply(null,b.subarray(i,i+8192));return s}
+function fromLatin1(s){const u=new Uint8Array(s.length);for(let i=0;i<s.length;i++)u[i]=s.charCodeAt(i)&255;return u}
+const lines = s => s.split(/\r?\n/);
+const hex = b => Array.from(b,x=>x.toString(16).padStart(2,'0')).join('');
+function fail(msg){throw new Error(msg)}
+function hexToBytes(s){s=s.replace(/0x/gi,'').replace(/[^0-9a-f]/gi,'');if(s.length%2)fail('Hex has an odd number of digits, so the last byte is incomplete.');const u=new Uint8Array(s.length/2);for(let i=0;i<u.length;i++)u[i]=parseInt(s.substr(i*2,2),16);return u}
+function b64decode(s){s=s.replace(/\s+/g,'').replace(/-/g,'+').replace(/_/g,'/');if(!/^[A-Za-z0-9+/]*={0,2}$/.test(s))fail("This isn't valid Base64. It has characters outside the Base64 alphabet.");s=s.replace(/=+$/,'');if(s.length%4===1)fail("This isn't valid Base64. It looks like a character is missing or extra.");while(s.length%4)s+='=';return fromLatin1(atob(s))}
+function table(rows){const w=Math.max(...rows.map(r=>String(r[0]).length));return rows.map(([k,v])=>String(k).padEnd(w+2)+v).join('\n')}
+const unesc = s => s.replace(/\\n/g,'\n').replace(/\\t/g,'\t').replace(/\\r/g,'\r');
+const reEsc = s => s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+const DELIMS = {'Space':' ','None':'','Colon':':','Comma':',','New line':'\n'};
+const sepArg = (v='Space') => ({label:'Separator',type:'select',options:Object.keys(DELIMS),value:v});
+const fmtArg = {label:'Output',type:'select',options:['Hex','Base64'],value:'Hex'};
+
+const OPS = [];
+function op(cat,name,desc,args,fn,extra={}){OPS.push({cat,name,desc,args:args||[],fn,...extra})}
+
+/* ===================== Encoding ===================== */
+op('Encoding','To Base64','Encode data as Base64',[{label:'Alphabet',type:'select',options:['Standard','URL-safe'],value:'Standard'}],
+  (b,[a])=>{let s=btoa(latin1(b));if(a==='URL-safe')s=s.replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');return s});
+op('Encoding','From Base64','Decode Base64 (standard or URL-safe)',[],b=>b64decode(str(b)));
+
+const B32='ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+op('Encoding','To Base32','Encode data as Base32 (RFC 4648)',[],b=>{let bits=0,val=0,out='';for(const x of b){val=((val<<8)|x)&0xFFF;bits+=8;while(bits>=5){out+=B32[(val>>>(bits-5))&31];bits-=5}}if(bits>0)out+=B32[(val<<(5-bits))&31];while(out.length%8)out+='=';return out});
+op('Encoding','From Base32','Decode Base32 (RFC 4648)',[],b=>{const s=str(b).toUpperCase().replace(/[\s=]/g,'');let bits=0,val=0;const out=[];for(const c of s){const i=B32.indexOf(c);if(i<0)fail(`“${c}” isn't a Base32 character.`);val=((val<<5)|i)&0xFFF;bits+=5;if(bits>=8){out.push((val>>>(bits-8))&255);bits-=8}}return new Uint8Array(out)});
+
+const B58='123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+op('Encoding','To Base58','Encode as Base58 (Bitcoin alphabet)',[],b=>{let n=0n;for(const x of b)n=n*256n+BigInt(x);let out='';while(n>0n){out=B58[Number(n%58n)]+out;n/=58n}for(const x of b){if(x===0)out='1'+out;else break}return out});
+op('Encoding','From Base58','Decode Base58 (Bitcoin alphabet)',[],b=>{const s=str(b).trim();let n=0n;for(const c of s){const i=B58.indexOf(c);if(i<0)fail(`“${c}” isn't a Base58 character.`);n=n*58n+BigInt(i)}const out=[];while(n>0n){out.unshift(Number(n%256n));n/=256n}for(const c of s){if(c==='1')out.unshift(0);else break}return new Uint8Array(out)});
+
+op('Encoding','To Hex','Show each byte as two hex digits',[sepArg()],(b,[d])=>Array.from(b,x=>x.toString(16).padStart(2,'0')).join(DELIMS[d]));
+op('Encoding','From Hex','Turn hex back into data (ignores spaces, colons, 0x)',[],b=>hexToBytes(str(b)));
+op('Encoding','To Binary','Show each byte as 8 bits',[sepArg()],(b,[d])=>Array.from(b,x=>x.toString(2).padStart(8,'0')).join(DELIMS[d]));
+op('Encoding','From Binary','Turn 0s and 1s back into data',[],b=>{const s=str(b).replace(/[^01]/g,'');if(s.length%8)fail(`The input has ${s.length} bits, which isn't a multiple of 8.`);const u=new Uint8Array(s.length/8);for(let i=0;i<u.length;i++)u[i]=parseInt(s.substr(i*8,8),2);return u});
+op('Encoding','To Decimal bytes','Show each byte as a number 0–255',[sepArg()],(b,[d])=>Array.from(b).join(DELIMS[d]));
+op('Encoding','From Decimal bytes','Turn numbers 0–255 back into data',[],b=>{const t=str(b).split(/[^\d]+/).filter(Boolean).map(Number);const bad=t.find(n=>n>255);if(bad!==undefined)fail(`${bad} is too big for a byte. Each number must be 0–255.`);return new Uint8Array(t)});
+op('Encoding','To Octal','Show each byte in base 8',[sepArg()],(b,[d])=>Array.from(b,x=>x.toString(8)).join(DELIMS[d]));
+op('Encoding','From Octal','Turn octal numbers back into data',[],b=>{const t=str(b).split(/[^0-7]+/).filter(Boolean).map(x=>parseInt(x,8));const bad=t.find(n=>n>255);if(bad!==undefined)fail('An octal value is bigger than 377 (one byte).');return new Uint8Array(t)});
+
+function pctDecode(s){const out=[];for(const part of s.split(/(%[0-9a-fA-F]{2})/)){if(/^%[0-9a-fA-F]{2}$/.test(part))out.push(parseInt(part.slice(1),16));else for(const x of by(part))out.push(x)}return new Uint8Array(out)}
+op('Encoding','URL encode','Percent-encode text for use in a URL',[{label:'Encode',type:'select',options:['Special characters','Every character'],value:'Special characters'}],
+  (b,[m])=>m==='Every character'?Array.from(b,x=>'%'+x.toString(16).toUpperCase().padStart(2,'0')).join(''):encodeURIComponent(str(b)));
+op('Encoding','URL decode','Turn %XX sequences back into characters',[{label:'Plus signs',type:'select',options:['Treat as space','Leave as +'],value:'Treat as space'}],
+  (b,[p])=>{let s=str(b);if(p==='Treat as space')s=s.replace(/\+/g,' ');return pctDecode(s)});
+
+const NAMED={amp:'&',lt:'<',gt:'>',quot:'"',apos:"'",nbsp:'\u00a0',copy:'©',reg:'®',trade:'™',hellip:'…',mdash:'—',ndash:'–',lsquo:'‘',rsquo:'’',ldquo:'“',rdquo:'”',euro:'€',pound:'£',yen:'¥',cent:'¢',deg:'°',times:'×',divide:'÷',sect:'§',para:'¶',middot:'·',bull:'•'};
+op('Encoding','HTML entity encode','Escape characters so they show safely in HTML',[{label:'Encode',type:'select',options:['Special characters','Also non-ASCII'],value:'Special characters'}],
+  (b,[m])=>{let s=str(b).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);if(m==='Also non-ASCII')s=s.replace(/[^\x00-\x7e]/gu,c=>'&#'+c.codePointAt(0)+';');return s});
+op('Encoding','HTML entity decode','Turn &amp;, &#39; and friends back into characters',[],
+  b=>str(b).replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi,(m,e)=>{if(e[0]==='#'){const n=e[1].toLowerCase()==='x'?parseInt(e.slice(2),16):parseInt(e.slice(1),10);try{return String.fromCodePoint(n)}catch{return m}}return NAMED[e]??NAMED[e.toLowerCase()]??m}));
+
+op('Encoding','Unicode escape','Write characters as \\uXXXX escapes',[{label:'Escape',type:'select',options:['Non-ASCII only','Every character'],value:'Non-ASCII only'}],
+  (b,[m])=>{let out='';for(const ch of str(b)){const cp=ch.codePointAt(0);if(m==='Non-ASCII only'&&cp<128){out+=ch;continue}out+=ch.split('').map(u=>'\\u'+u.charCodeAt(0).toString(16).padStart(4,'0')).join('')}return out});
+op('Encoding','Unicode unescape','Turn \\uXXXX, \\u{…} and \\xNN back into characters',[],
+  b=>str(b).replace(/\\u\{([0-9a-f]+)\}|\\u([0-9a-f]{4})|\\x([0-9a-f]{2})/gi,(m,a,c,d)=>a?String.fromCodePoint(parseInt(a,16)):String.fromCharCode(parseInt(c||d,16))));
+
+const MORSE={A:'.-',B:'-...',C:'-.-.',D:'-..',E:'.',F:'..-.',G:'--.',H:'....',I:'..',J:'.---',K:'-.-',L:'.-..',M:'--',N:'-.',O:'---',P:'.--.',Q:'--.-',R:'.-.',S:'...',T:'-',U:'..-',V:'...-',W:'.--',X:'-..-',Y:'-.--',Z:'--..',0:'-----',1:'.----',2:'..---',3:'...--',4:'....-',5:'.....',6:'-....',7:'--...',8:'---..',9:'----.','.':'.-.-.-',',':'--..--','?':'..--..',"'":'.----.','!':'-.-.--','/':'-..-.','(':'-.--.',')':'-.--.-','&':'.-...',':':'---...',';':'-.-.-.','=':'-...-','+':'.-.-.','-':'-....-','_':'..--.-','"':'.-..-.','$':'...-..-','@':'.--.-.'};
+const MORSE_R=Object.fromEntries(Object.entries(MORSE).map(([k,v])=>[v,k]));
+op('Encoding','To Morse code','Letters and numbers to dots and dashes',[],b=>str(b).toUpperCase().trim().split(/\s+/).map(w=>[...w].map(c=>MORSE[c]).filter(Boolean).join(' ')).filter(Boolean).join(' / '));
+op('Encoding','From Morse code','Dots and dashes back to text (words split by /)',[],b=>str(b).trim().split(/\s*[\/|]\s*|\n+/).map(w=>w.trim().split(/\s+/).filter(Boolean).map(c=>MORSE_R[c]??'?').join('')).join(' '));
+
+/* ===================== Encryption ===================== */
+function rot(s,n){n=((n%26)+26)%26;return s.replace(/[a-z]/gi,c=>{const base=c<='Z'?65:97;return String.fromCharCode((c.charCodeAt(0)-base+n)%26+base)})}
+op('Encryption','ROT13 / Caesar','Shift letters along the alphabet (13 = ROT13)',[{label:'Shift',type:'number',value:13}],(b,[n])=>rot(str(b),parseInt(n)||0));
+op('Encryption','ROT47','Rotate all visible ASCII characters by 47',[],b=>str(b).replace(/[!-~]/g,c=>String.fromCharCode(33+((c.charCodeAt(0)-33+47)%94))));
+op('Encryption','Atbash','Swap A↔Z, B↔Y, and so on',[],b=>str(b).replace(/[a-z]/gi,c=>{const base=c<='Z'?65:97;return String.fromCharCode(25-(c.charCodeAt(0)-base)+base)}));
+function vig(s,key,dir){const k=String(key).toLowerCase().replace(/[^a-z]/g,'');if(!k)fail('Enter a key made of letters.');let j=0;return s.replace(/[a-z]/gi,c=>{const base=c<='Z'?65:97;const sh=(k.charCodeAt(j++%k.length)-97)*dir;return String.fromCharCode((((c.charCodeAt(0)-base+sh)%26)+26)%26+base)})}
+op('Encryption','Vigenère encode','Classic keyword cipher',[{label:'Key',type:'text',value:'KEY'}],(b,[k])=>vig(str(b),k,1));
+op('Encryption','Vigenère decode','Reverse a Vigenère cipher with its key',[{label:'Key',type:'text',value:'KEY'}],(b,[k])=>vig(str(b),k,-1));
+op('Encryption','XOR','XOR every byte with a repeating key',[{label:'Key',type:'text',value:''},{label:'Key is',type:'select',options:['Text','Hex'],value:'Text'}],
+  (b,[k,f])=>{const key=f==='Hex'?hexToBytes(k):by(k);if(!key.length)fail('Enter a key to XOR with.');return b.map((x,i)=>x^key[i%key.length])});
+async function aesKey(pass,salt){const base=await crypto.subtle.importKey('raw',by(pass),'PBKDF2',false,['deriveKey']);return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:100000,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['encrypt','decrypt'])}
+op('Encryption','AES encrypt','Lock data with a password (AES-256-GCM). Output is Base64.',[{label:'Password',type:'password',value:''}],
+  async(b,[p])=>{if(!p)fail('Enter a password to encrypt with.');const salt=crypto.getRandomValues(new Uint8Array(16)),iv=crypto.getRandomValues(new Uint8Array(12));const ct=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv},await aesKey(p,salt),b));const all=new Uint8Array(28+ct.length);all.set(salt);all.set(iv,16);all.set(ct,28);return btoa(latin1(all))},{random:true});
+op('Encryption','AES decrypt','Unlock Base64 made by “AES encrypt” using the same password',[{label:'Password',type:'password',value:''}],
+  async(b,[p])=>{if(!p)fail('Enter the password it was encrypted with.');const all=b64decode(str(b));if(all.length<29)fail('This is too short to be data from “AES encrypt”.');try{return new Uint8Array(await crypto.subtle.decrypt({name:'AES-GCM',iv:all.slice(16,28)},await aesKey(p,all.slice(0,16)),all.slice(28)))}catch{fail('Wrong password, or the encrypted text was changed.')}});
+
+/* ===================== Hashing ===================== */
+function md5(bytes){const K=new Uint32Array(64),S=[7,12,17,22,7,12,17,22,7,12,17,22,7,12,17,22,5,9,14,20,5,9,14,20,5,9,14,20,5,9,14,20,4,11,16,23,4,11,16,23,4,11,16,23,4,11,16,23,6,10,15,21,6,10,15,21,6,10,15,21,6,10,15,21];
+  for(let i=0;i<64;i++)K[i]=Math.floor(Math.abs(Math.sin(i+1))*2**32);
+  const len=bytes.length,nb=Math.floor((len+8)/64)+1,W=new Uint32Array(nb*16);
+  for(let i=0;i<len;i++)W[i>>2]|=bytes[i]<<((i%4)*8);
+  W[len>>2]|=0x80<<((len%4)*8);W[nb*16-2]=(len*8)>>>0;W[nb*16-1]=Math.floor(len/0x20000000);
+  let a0=0x67452301,b0=0xefcdab89,c0=0x98badcfe,d0=0x10325476;
+  for(let k=0;k<nb;k++){let A=a0,B=b0,C=c0,D=d0;
+    for(let i=0;i<64;i++){let F,g;
+      if(i<16){F=(B&C)|(~B&D);g=i}else if(i<32){F=(D&B)|(~D&C);g=(5*i+1)%16}else if(i<48){F=B^C^D;g=(3*i+5)%16}else{F=C^(B|~D);g=(7*i)%16}
+      F=(F+A+K[i]+W[k*16+g])>>>0;A=D;D=C;C=B;B=(B+((F<<S[i])|(F>>>(32-S[i]))))>>>0}
+    a0=(a0+A)>>>0;b0=(b0+B)>>>0;c0=(c0+C)>>>0;d0=(d0+D)>>>0}
+  const out=new Uint8Array(16);[a0,b0,c0,d0].forEach((v,i)=>{for(let j=0;j<4;j++)out[i*4+j]=(v>>>(j*8))&255});return out}
+let CRC_T;function crc32(b){if(!CRC_T){CRC_T=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;CRC_T[n]=c>>>0}}let c=0xFFFFFFFF;for(const x of b)c=CRC_T[(c^x)&255]^(c>>>8);return (c^0xFFFFFFFF)>>>0}
+const hashOut=(h,f)=>f==='Base64'?btoa(latin1(h)):hex(h);
+const sha=async(alg,b)=>new Uint8Array(await crypto.subtle.digest(alg,b));
+op('Hashing','All hashes','MD5, SHA-1, SHA-256 and SHA-512 at once',[],async b=>table([['MD5',hex(md5(b))],['SHA-1',hex(await sha('SHA-1',b))],['SHA-256',hex(await sha('SHA-256',b))],['SHA-512',hex(await sha('SHA-512',b))],['CRC32',crc32(b).toString(16).padStart(8,'0')]]));
+op('Hashing','MD5','MD5 fingerprint (fine for checksums, not for security)',[fmtArg],(b,[f])=>hashOut(md5(b),f));
+for(const a of ['SHA-1','SHA-256','SHA-384','SHA-512'])op('Hashing',a,`${a} fingerprint of the data`,[fmtArg],async(b,[f])=>hashOut(await sha(a,b),f));
+op('Hashing','CRC32','Quick checksum used in ZIP files and networking',[],b=>crc32(b).toString(16).padStart(8,'0'));
+op('Hashing','HMAC','Keyed hash, used to sign API requests',[{label:'Key',type:'text',value:''},{label:'Hash',type:'select',options:['SHA-256','SHA-1','SHA-384','SHA-512'],value:'SHA-256'},fmtArg],
+  async(b,[k,h,f])=>{if(!k)fail('Enter a key.');const key=await crypto.subtle.importKey('raw',by(k),{name:'HMAC',hash:h},false,['sign']);return hashOut(new Uint8Array(await crypto.subtle.sign('HMAC',key,b)),f)});
+
+/* ===================== Text ===================== */
+op('Text','UPPER CASE','Make every letter capital',[],b=>str(b).toUpperCase());
+op('Text','lower case','Make every letter small',[],b=>str(b).toLowerCase());
+op('Text','Title Case','Capitalise the first letter of each word',[],b=>str(b).toLowerCase().replace(/(^|[\s\-_(\[/"])(\p{L})/gu,(m,p,c)=>p+c.toUpperCase()));
+op('Text','Naming style','camelCase, snake_case, kebab-case and more, line by line',[{label:'Style',type:'select',options:['camelCase','PascalCase','snake_case','kebab-case','CONSTANT_CASE'],value:'camelCase'}],
+  (b,[st])=>lines(str(b)).map(l=>{const w=l.replace(/([\p{Ll}\d])(\p{Lu})/gu,'$1 $2').split(/[^\p{L}\p{N}]+/u).filter(Boolean).map(x=>x.toLowerCase());if(!w.length)return l;const cap=x=>x[0].toUpperCase()+x.slice(1);
+    return st==='camelCase'?w[0]+w.slice(1).map(cap).join(''):st==='PascalCase'?w.map(cap).join(''):st==='snake_case'?w.join('_'):st==='kebab-case'?w.join('-'):w.join('_').toUpperCase()}).join('\n'));
+op('Text','Reverse','Reverse characters, words or lines',[{label:'Reverse',type:'select',options:['Characters','Words','Lines'],value:'Characters'}],
+  (b,[m])=>{const s=str(b);return m==='Lines'?lines(s).reverse().join('\n'):m==='Words'?lines(s).map(l=>l.split(/(\s+)/).reverse().join('')).join('\n'):Array.from(s).reverse().join('')});
+op('Text','Sort lines','Put lines in order',[{label:'Order',type:'select',options:['A to Z','Z to A','Smallest number first','Largest number first','Shortest first','Longest first'],value:'A to Z'}],
+  (b,[o])=>{const L=lines(str(b));const num=x=>parseFloat(x.replace(/[^\d.\-]/g,''))||0;const cmp={'A to Z':(a,c)=>a.localeCompare(c),'Z to A':(a,c)=>c.localeCompare(a),'Smallest number first':(a,c)=>num(a)-num(c),'Largest number first':(a,c)=>num(c)-num(a),'Shortest first':(a,c)=>a.length-c.length,'Longest first':(a,c)=>c.length-a.length}[o];return L.sort(cmp).join('\n')});
+op('Text','Remove duplicate lines','Keep only the first copy of each line',[{label:'Compare',type:'select',options:['Exactly','Ignoring case'],value:'Exactly'}],
+  (b,[m])=>{const seen=new Set();return lines(str(b)).filter(l=>{const k=m==='Exactly'?l:l.toLowerCase();if(seen.has(k))return false;seen.add(k);return true}).join('\n')});
+op('Text','Remove blank lines','Delete empty lines',[],b=>lines(str(b)).filter(l=>l.trim()).join('\n'));
+op('Text','Whitespace','Trim, collapse or strip spaces and line breaks',[{label:'Action',type:'select',options:['Trim each line','Collapse repeated spaces','Remove line breaks','Remove all whitespace'],value:'Trim each line'}],
+  (b,[a])=>{const s=str(b);return a==='Trim each line'?lines(s).map(l=>l.trim()).join('\n'):a==='Collapse repeated spaces'?s.replace(/[ \t]+/g,' '):a==='Remove line breaks'?s.replace(/\r?\n/g,' '):s.replace(/\s+/g,'')});
+op('Text','Find & replace','Replace text, optionally with a regular expression',[{label:'Find',type:'text',value:''},{label:'Replace with',type:'text',value:''},{label:'Match',type:'select',options:['Plain text','Regular expression'],value:'Plain text'},{label:'Case',type:'select',options:['Match case','Ignore case'],value:'Match case'}],
+  (b,[f,r,m,c])=>{const s=str(b);if(!f)return s;let re;try{re=new RegExp(m==='Plain text'?reEsc(f):f,'g'+(c==='Ignore case'?'i':'')+'u')}catch(e){fail(`That pattern isn't valid: ${e.message}`)}return m==='Plain text'?s.replace(re,()=>unesc(r)):s.replace(re,unesc(r))});
+op('Text','Filter lines','Keep or remove lines that contain some text',[{label:'Action',type:'select',options:['Keep lines containing','Remove lines containing'],value:'Keep lines containing'},{label:'Text',type:'text',value:''},{label:'Case',type:'select',options:['Ignore case','Match case'],value:'Ignore case'}],
+  (b,[a,t,c])=>{const L=lines(str(b));if(!t)return L.join('\n');const ic=c==='Ignore case',q=ic?t.toLowerCase():t;return L.filter(l=>(ic?l.toLowerCase():l).includes(q)===(a==='Keep lines containing')).join('\n')});
+op('Text','Split & join','Split on one separator, join with another (\\n = new line)',[{label:'Split on',type:'text',value:','},{label:'Join with',type:'text',value:'\\n'},{label:'Trim pieces',type:'select',options:['Yes','No'],value:'Yes'}],
+  (b,[s,j,t])=>{let p=str(b).split(unesc(s));if(t==='Yes')p=p.map(x=>x.trim());return p.join(unesc(j))});
+op('Text','Add line numbers','Number every line',[],b=>{const L=lines(str(b)),w=String(L.length).length;return L.map((l,i)=>String(i+1).padStart(w)+'  '+l).join('\n')});
+op('Text','Extract','Pull out URLs, emails, IPs, hashes and more',[{label:'Find',type:'select',options:['URLs','Email addresses','IPv4 addresses','Domains','MAC addresses','Hashes (MD5/SHA)','Numbers'],value:'URLs'},{label:'Duplicates',type:'select',options:['Remove','Keep'],value:'Remove'}],
+  (b,[w,d])=>{const P={'URLs':/\bhttps?:\/\/[^\s<>"'`)\]]+/gi,'Email addresses':/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g,'IPv4 addresses':/\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b/g,'Domains':/\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}\b/gi,'MAC addresses':/\b(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}\b/gi,'Hashes (MD5/SHA)':/\b(?:[a-f0-9]{128}|[a-f0-9]{96}|[a-f0-9]{64}|[a-f0-9]{40}|[a-f0-9]{32})\b/gi,'Numbers':/-?\d+(?:\.\d+)?/g};let m=(str(b).match(P[w])||[]).map(x=>w==='URLs'?x.replace(/[.,;:!?]+$/,''):x);if(d==='Remove')m=[...new Set(m)];return m.join('\n')});
+op('Text','Count','Characters, words, lines and bytes',[],b=>{const s=str(b),n=x=>x.toLocaleString();return table([['Characters',n([...s].length)],['Words',n((s.match(/\S+/g)||[]).length)],['Lines',n(s?lines(s).length:0)],['Bytes',n(b.length)],['Letters',n((s.match(/\p{L}/gu)||[]).length)],['Digits',n((s.match(/\d/g)||[]).length)],['Spaces',n((s.match(/ /g)||[]).length)]])});
+
+/* ===================== Data formats ===================== */
+const pj=s=>{try{return JSON.parse(s)}catch(e){fail(`That isn't valid JSON. ${e.message}`)}};
+op('Data formats','JSON beautify','Indent JSON so it is easy to read',[{label:'Indent',type:'select',options:['2 spaces','4 spaces','Tab'],value:'2 spaces'}],(b,[i])=>JSON.stringify(pj(str(b)),null,i==='Tab'?'\t':i==='4 spaces'?4:2));
+op('Data formats','JSON minify','Remove all spacing from JSON',[],b=>JSON.stringify(pj(str(b))));
+function parseCSV(s,sep){const rows=[];let row=[],f='',q=false;for(let i=0;i<s.length;i++){const c=s[i];if(q){if(c==='"'){if(s[i+1]==='"'){f+='"';i++}else q=false}else f+=c}else if(c==='"')q=true;else if(c===sep){row.push(f);f=''}else if(c==='\n'||c==='\r'){if(c==='\r'&&s[i+1]==='\n')i++;row.push(f);rows.push(row);row=[];f=''}else f+=c}if(f!==''||row.length){row.push(f);rows.push(row)}return rows}
+const SEPS={'Comma':',','Tab':'\t','Semicolon':';'};
+op('Data formats','CSV to JSON','First row becomes the field names',[{label:'Separator',type:'select',options:Object.keys(SEPS),value:'Comma'}],
+  (b,[s])=>{const r=parseCSV(str(b),SEPS[s]).filter(x=>x.some(v=>v!==''));if(!r.length)return '[]';const h=r[0];return JSON.stringify(r.slice(1).map(x=>Object.fromEntries(h.map((k,i)=>[k,x[i]??'']))),null,2)});
+op('Data formats','JSON to CSV','Turn a list of objects into a spreadsheet-ready table',[{label:'Separator',type:'select',options:Object.keys(SEPS),value:'Comma'}],
+  (b,[s])=>{let d=pj(str(b));if(!Array.isArray(d))d=[d];const sep=SEPS[s];const keys=[...new Set(d.flatMap(o=>o&&typeof o==='object'?Object.keys(o):[]))];const esc=v=>{if(v==null)return'';if(typeof v==='object')v=JSON.stringify(v);v=String(v);return v.includes(sep)||/["\n\r]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};return [keys.map(esc).join(sep),...d.map(o=>keys.map(k=>esc(o?.[k])).join(sep))].join('\n')});
+op('Data formats','JWT decode','Show the header, payload and dates inside a login token',[],
+  b=>{const p=str(b).trim().split('.');if(p.length<2)fail("This doesn't look like a JWT. A token has parts separated by dots.");const dj=x=>{try{return JSON.parse(str(b64decode(x)))}catch{fail("Part of the token isn't valid Base64 JSON.")}};const h=dj(p[0]),pl=dj(p[1]);const notes=[];for(const k of ['iat','nbf','exp'])if(typeof pl[k]==='number'){const lab={iat:'Issued',nbf:'Not before',exp:'Expires'}[k];notes.push([lab,new Date(pl[k]*1000).toISOString()+(k==='exp'?(pl[k]*1000<Date.now()?'  (expired)':'  (not expired yet)'):'')])}
+    return `Header\n${JSON.stringify(h,null,2)}\n\nPayload\n${JSON.stringify(pl,null,2)}`+(notes.length?`\n\n${table(notes)}`:'')+'\n\nThe signature is not checked.'});
+op('Data formats','Parse URL','Break a link into its parts and query parameters',[],
+  b=>{let u;try{u=new URL(str(b).trim())}catch{fail("That isn't a complete URL. Include the start, like https://")}const rows=[['Protocol',u.protocol],['Username',u.username],['Password',u.password],['Host',u.hostname],['Port',u.port||'(default)'],['Path',u.pathname],['Query',u.search],['Fragment',u.hash]].filter(r=>r[1]);let out=table(rows);const q=[...u.searchParams];if(q.length)out+='\n\nQuery parameters\n'+table(q);return out});
+op('Data formats','To hexdump','Offset, hex bytes and readable text side by side',[],
+  b=>{const out=[];for(let o=0;o<b.length;o+=16){const ch=b.subarray(o,o+16),hx=Array.from(ch,x=>x.toString(16).padStart(2,'0'));out.push(o.toString(16).padStart(8,'0')+'  '+(hx.slice(0,8).join(' ')+'  '+hx.slice(8).join(' ')).padEnd(48)+'  |'+Array.from(ch,x=>x>=32&&x<127?String.fromCharCode(x):'.').join('')+'|')}return out.join('\n')});
+op('Data formats','Entropy','How random the data looks (helps spot encryption)',[],
+  b=>{if(!b.length)return 'No data.';const f=new Array(256).fill(0);for(const x of b)f[x]++;let e=0;for(const c of f)if(c){const p=c/b.length;e-=p*Math.log2(p)}return `${e.toFixed(3)} bits per byte (0 = one repeated byte, 8 = fully random)\n`+(e>7.5?'Very high: likely encrypted, compressed or random data.':e>5?'Medium: could be encoded data or dense text.':'Low: likely plain text or repetitive data.')});
+op('Data formats','Character frequency','Which characters appear most',[{label:'Show top',type:'number',value:25}],
+  (b,[n])=>{const m=new Map();let t=0;for(const c of str(b)){m.set(c,(m.get(c)||0)+1);t++}const show=c=>c===' '?'(space)':c==='\n'?'(new line)':c==='\t'?'(tab)':c;return table([...m].sort((a,c)=>c[1]-a[1]).slice(0,Math.max(1,parseInt(n)||25)).map(([c,k])=>[show(c),`${k}  ${(k/t*100).toFixed(1)}%`]))});
+
+/* ===================== Math & time ===================== */
+function calc(src,deg){const s=src.replace(/\s+/g,'').replace(/×/g,'*').replace(/÷/g,'/').replace(/−/g,'-');let i=0;
+  const toR=x=>deg?x*Math.PI/180:x,fromR=x=>deg?x*180/Math.PI:x;
+  const F={sqrt:Math.sqrt,cbrt:Math.cbrt,abs:Math.abs,sin:x=>Math.sin(toR(x)),cos:x=>Math.cos(toR(x)),tan:x=>Math.tan(toR(x)),asin:x=>fromR(Math.asin(x)),acos:x=>fromR(Math.acos(x)),atan:x=>fromR(Math.atan(x)),ln:Math.log,log:Math.log10,log2:Math.log2,exp:Math.exp,round:Math.round,floor:Math.floor,ceil:Math.ceil,min:Math.min,max:Math.max,pow:Math.pow};
+  const C={pi:Math.PI,e:Math.E,tau:2*Math.PI};
+  const fact=n=>{if(n<0||!Number.isInteger(n))fail('Factorial (!) only works on whole numbers 0 or above.');let r=1;for(let k=2;k<=n;k++)r*=k;return r};
+  function expr(){let v=term();while(s[i]==='+'||s[i]==='-'){const o=s[i++],r=term();v=o==='+'?v+r:v-r}return v}
+  function term(){let v=unary();while(s[i]&&'*/%'.includes(s[i])&&!(s[i]==='*'&&s[i+1]==='*')){const o=s[i++],r=unary();v=o==='*'?v*r:o==='/'?v/r:v%r}return v}
+  function unary(){if(s[i]==='-'){i++;return -unary()}if(s[i]==='+'){i++;return unary()}return power()}
+  function power(){const v=postfix();if(s[i]==='^'||(s[i]==='*'&&s[i+1]==='*')){i+=s[i]==='^'?1:2;return v**unary()}return v}
+  function postfix(){let v=atom();while(s[i]==='!'){i++;v=fact(v)}return v}
+  function atom(){if(s[i]==='('){i++;const v=expr();if(s[i]!==')')fail('A closing bracket is missing.');i++;return v}
+    const m=s.slice(i).match(/^(0x[0-9a-f]+|0b[01]+|0o[0-7]+|(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)/i);if(m){i+=m[0].length;return Number(m[0])}
+    const id=s.slice(i).match(/^[a-z]\w*/i);if(id){const n=id[0].toLowerCase();i+=id[0].length;if(n in C)return C[n];if(n in F){if(s[i]!=='(')fail(`${n} needs brackets, like ${n}(9).`);i++;const a=[expr()];while(s[i]===','){i++;a.push(expr())}if(s[i]!==')')fail('A closing bracket is missing.');i++;return F[n](...a)}fail(`“${id[0]}” isn't a function or constant this calculator knows.`)}
+    fail(s[i]?`Unexpected “${s[i]}”.`:'The expression ends too early.')}
+  if(!s)return null;const v=expr();if(i<s.length)fail(`Unexpected “${s[i]}”.`);return v}
+const fmtNum=v=>{if(Number.isNaN(v))fail("The result isn't a number. Check for things like the square root of a negative.");if(!Number.isFinite(v))return v>0?'Infinity':'-Infinity';if(Number.isInteger(v)&&Math.abs(v)<1e16)return String(v);return String(+v.toPrecision(14))};
+op('Math & time','Calculate','Arithmetic on each line: (2+3)*4^2, sqrt(81), 0xFF+1, 5!, 17%5',[{label:'Angles',type:'select',options:['Degrees','Radians'],value:'Degrees'}],
+  (b,[a])=>lines(str(b)).map((l,n,all)=>{try{const v=calc(l,a==='Degrees');return v===null?'':fmtNum(v)}catch(e){fail(all.length>1?`Line ${n+1}: ${e.message}`:e.message)}}).join('\n'));
+function parseBase(tok,base){const D='0123456789abcdefghijklmnopqrstuvwxyz';let neg=false;tok=tok.toLowerCase();if(tok[0]==='-'){neg=true;tok=tok.slice(1)}if(base===16)tok=tok.replace(/^0x/,'');if(base===2)tok=tok.replace(/^0b/,'');if(base===8)tok=tok.replace(/^0o/,'');if(!tok)fail('Found a sign with no number after it.');let n=0n;const B=BigInt(base);for(const c of tok){const d=D.indexOf(c);if(d<0||d>=base)fail(`“${c}” isn't a valid digit in base ${base}.`);n=n*B+BigInt(d)}return neg?-n:n}
+op('Math & time','Convert number base','e.g. hex FF → decimal 255. Converts every number in the input.',[{label:'From base',type:'number',value:10},{label:'To base',type:'number',value:16}],
+  (b,[f,t])=>{f=parseInt(f);t=parseInt(t);if(!(f>=2&&f<=36&&t>=2&&t<=36))fail('Bases must be between 2 and 36.');return str(b).replace(/[^\s,;]+/g,tok=>parseBase(tok,f).toString(t))});
+op('Math & time','Timestamp → date','Turn a Unix timestamp into a readable date',[{label:'Unit',type:'select',options:['Auto','Seconds','Milliseconds'],value:'Auto'}],
+  (b,[u])=>{const L=lines(str(b)).map(l=>l.trim());const one=L.filter(Boolean).length===1;return L.map(l=>{if(!l)return '';const n=Number(l);if(!Number.isFinite(n))fail(`“${l}” isn't a number.`);const ms=u==='Milliseconds'||(u==='Auto'&&Math.abs(n)>1e11)?n:n*1000;const d=new Date(ms);if(isNaN(d))fail(`${l} is outside the range of dates.`);return one?table([['UTC',d.toISOString().replace('T',' ').replace('Z','')],['Local',d.toLocaleString()],['Weekday',d.toLocaleDateString(undefined,{weekday:'long'})]]):`${l}  →  ${d.toISOString()}`}).join('\n')});
+op('Math & time','Date → timestamp','Turn a date like 2026-11-21 14:30 into a Unix timestamp',[{label:'Unit',type:'select',options:['Seconds','Milliseconds'],value:'Seconds'}],
+  (b,[u])=>lines(str(b)).map(l=>{l=l.trim();if(!l)return '';const t=Date.parse(l.replace(/^(\d{4}-\d\d-\d\d) (\d)/,'$1T$2'));if(isNaN(t))fail(`Couldn't read “${l}” as a date. Try 2026-11-21 or 2026-11-21 14:30.`);return String(u==='Seconds'?Math.floor(t/1000):t)}).join('\n'));
+op('Math & time','Bytes → readable size','e.g. 1536000 → 1.46 MiB and 1.54 MB',[],
+  b=>lines(str(b)).map(l=>{l=l.trim().replace(/,/g,'');if(!l)return '';const n=Number(l);if(!Number.isFinite(n))fail(`“${l}” isn't a number of bytes.`);const f=(base,u)=>{let i=0,v=n;while(Math.abs(v)>=base&&i<u.length-1){v/=base;i++}return `${+v.toFixed(2)} ${u[i]}`};return `${f(1024,['B','KiB','MiB','GiB','TiB','PiB'])}   (${f(1000,['B','KB','MB','GB','TB','PB'])})`}).join('\n'));
+
+/* ===================== Network ===================== */
+function ipToInt(ip){const p=ip.trim().split('.');if(p.length!==4||p.some(x=>!/^\d{1,3}$/.test(x)||+x>255))fail(`“${ip.trim()}” isn't a valid IPv4 address.`);return p.reduce((a,x)=>a*256+(+x),0)}
+const intToIp=n=>[n>>>24,(n>>>16)&255,(n>>>8)&255,n&255].join('.');
+op('Network','Subnet calculator','Network, broadcast, host range and mask for an address like 10.0.0.0/22',[],
+  b=>{const m=str(b).trim().match(/^([\d.]+)\s*\/\s*(\d{1,2})$/);if(!m)fail('Enter an address with a prefix, like 192.168.1.0/24.');const ip=ipToInt(m[1]),p=+m[2];if(p>32)fail('The prefix must be 0–32.');
+    const mask=p===0?0:(0xFFFFFFFF<<(32-p))>>>0,net=(ip&mask)>>>0,bc=(net|(~mask>>>0))>>>0,total=2**(32-p),small=p>=31;
+    return table([['Network',`${intToIp(net)}/${p}`],['Netmask',intToIp(mask)],['Wildcard',intToIp((~mask)>>>0)],['Broadcast',small?'(none)':intToIp(bc)],['First host',intToIp(small?net:net+1)],['Last host',intToIp(small?bc:bc-1)],['Usable hosts',(small?total:total-2).toLocaleString()],['Total addresses',total.toLocaleString()],['Private range',/^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(intToIp(net))?'Yes':'No']])});
+op('Network','IPv4 → number','192.168.1.1 → 3232235777, one per line',[],b=>lines(str(b)).map(l=>l.trim()?String(ipToInt(l)):'').join('\n'));
+op('Network','Number → IPv4','3232235777 → 192.168.1.1, one per line',[],b=>lines(str(b)).map(l=>{l=l.trim();if(!l)return '';const n=Number(l);if(!Number.isInteger(n)||n<0||n>4294967295)fail(`“${l}” isn't a whole number from 0 to 4294967295.`);return intToIp(n)}).join('\n'));
+op('Network','IPv4 → hex','192.168.1.1 → C0A80101',[],b=>lines(str(b)).map(l=>l.trim()?ipToInt(l).toString(16).toUpperCase().padStart(8,'0'):'').join('\n'));
+op('Network','Defang','Make URLs and IPs unclickable for reports: hxxp, [.]',[],
+  b=>str(b).replace(/\b(?:https?:\/\/)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?:[\/:?#][^\s]*)?|\b\d{1,3}(?:\.\d{1,3}){3}\b/gi,m=>m.replace(/^http/i,'hxxp').replace(/\./g,'[.]')));
+op('Network','Refang','Undo defanging so links work again',[],b=>str(b).replace(/\[\.\]|\(\.\)|\{\.\}/g,'.').replace(/hxxp/gi,'http').replace(/\[:\]/g,':').replace(/\[@\]/g,'@'));
+op('Network','Format MAC address','Rewrite MACs as aa:bb:cc…, AA-BB-CC… or aabb.ccdd.eeff',[{label:'Style',type:'select',options:['aa:bb:cc:dd:ee:ff','AA-BB-CC-DD-EE-FF','aabb.ccdd.eeff','aabbccddeeff'],value:'aa:bb:cc:dd:ee:ff'}],
+  (b,[st])=>lines(str(b)).map(l=>{const h=l.replace(/[^0-9a-f]/gi,'').toLowerCase();if(!l.trim())return '';if(h.length!==12)fail(`“${l.trim()}” doesn't have the 12 hex digits of a MAC address.`);const p=h.match(/../g);return st==='aa:bb:cc:dd:ee:ff'?p.join(':'):st==='AA-BB-CC-DD-EE-FF'?p.join('-').toUpperCase():st==='aabb.ccdd.eeff'?h.match(/..../g).join('.'):h}).join('\n'));
+
+/* ===================== Generate (ignores input) ===================== */
+const uuid=()=>crypto.randomUUID?crypto.randomUUID():'10000000-1000-4000-8000-100000000000'.replace(/[018]/g,c=>(c^crypto.getRandomValues(new Uint8Array(1))[0]&15>>c/4).toString(16));
+op('Generate','UUID','Random v4 UUIDs (ignores input)',[{label:'How many',type:'number',value:1}],(b,[n])=>Array.from({length:Math.min(Math.max(parseInt(n)||1,1),500)},uuid).join('\n'),{random:true,gen:true});
+op('Generate','Password','Strong random passwords (ignores input)',[{label:'Length',type:'number',value:20},{label:'Use',type:'select',options:['Letters, numbers, symbols','Letters and numbers','Numbers only'],value:'Letters, numbers, symbols'},{label:'How many',type:'number',value:1}],
+  (b,[len,set,cnt])=>{const cs={'Letters, numbers, symbols':'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*-_=+?','Letters and numbers':'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789','Numbers only':'0123456789'}[set];const n=Math.min(Math.max(parseInt(len)||20,4),512),c=Math.min(Math.max(parseInt(cnt)||1,1),200);const out=[];for(let k=0;k<c;k++){let p='';for(const x of crypto.getRandomValues(new Uint32Array(n)))p+=cs[x%cs.length];out.push(p)}return out.join('\n')},{random:true,gen:true});
+op('Generate','Random bytes','Random data (add “To Hex” or “To Base64” after)',[{label:'Bytes',type:'number',value:32}],(b,[n])=>crypto.getRandomValues(new Uint8Array(Math.min(Math.max(parseInt(n)||32,1),65536))),{random:true,gen:true});
+op('Generate','Current time','Unix time and today’s date right now (ignores input)',[],()=>{const d=new Date();return table([['Unix seconds',Math.floor(d/1000)],['Unix ms',+d],['UTC',d.toISOString()],['Local',d.toLocaleString()]])},{random:true,gen:true});
+</script>
+
+<script>
+/* ===================== App ===================== */
+const $=s=>document.querySelector(s);
+const inputEl=$('#input'),outEl=$('#output'),recipeEl=$('#recipe'),noticeEl=$('#notice'),suggestEl=$('#suggest');
+const CATS=[...new Set(OPS.map(o=>o.cat))];
+const ICON={
+  up:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg>',
+  down:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
+  pause:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M9 6v12M15 6v12"/></svg>',
+  play:'<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg>',
+  x:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>'
+};
+let recipe=[],outText='',runId=0,timer=null;
+$('#opCount').textContent=`${OPS.length} operations`;
+
+function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>t.classList.remove('show'),1800)}
+function schedule(){clearTimeout(timer);timer=setTimeout(run,140)}
+const sizeText=(chars,bytes)=>`${chars.toLocaleString()} ${chars===1?'character':'characters'}`+(bytes!==chars?`, ${bytes.toLocaleString()} bytes`:'');
+
+function addStep(name){const o=OPS.find(x=>x.name===name);if(!o)return;recipe.push({op:o,args:o.args.map(a=>String(a.value??'')),off:false});renderRecipe();schedule()}
+function stepAction(i,a){
+  if(a==='up'&&i>0)[recipe[i-1],recipe[i]]=[recipe[i],recipe[i-1]];
+  else if(a==='down'&&i<recipe.length-1)[recipe[i+1],recipe[i]]=[recipe[i],recipe[i+1]];
+  else if(a==='off')recipe[i].off=!recipe[i].off;
+  else if(a==='rm')recipe.splice(i,1);
+  renderRecipe();schedule();
+}
+function renderRecipe(){
+  recipeEl.innerHTML='';
+  $('#recMeta').textContent=recipe.length?`${recipe.length} ${recipe.length===1?'step':'steps'}`:'';
+  if(!recipe.length){const li=document.createElement('li');li.className='empty';li.textContent='Add an operation to change your input. Steps run top to bottom, each one working on the result of the step above.';recipeEl.append(li);return}
+  recipe.forEach((st,i)=>{
+    const li=document.createElement('li');li.className='step'+(st.off?' off':'');
+    li.innerHTML=`<span class="node" aria-hidden="true"></span><div class="step-box"><div class="step-head"><div class="step-title"><span class="step-name"></span><span class="step-cat"></span></div>
+      <button class="icon" data-a="up" aria-label="Move up" ${i===0?'disabled':''}>${ICON.up}</button>
+      <button class="icon" data-a="down" aria-label="Move down" ${i===recipe.length-1?'disabled':''}>${ICON.down}</button>
+      <button class="icon" data-a="off" aria-label="${st.off?'Turn step back on':'Pause step'}" aria-pressed="${st.off}">${st.off?ICON.play:ICON.pause}</button>
+      <button class="icon" data-a="rm" aria-label="Remove step">${ICON.x}</button></div></div>`;
+    li.querySelector('.step-name').textContent=st.op.name;
+    li.querySelector('.step-cat').textContent=st.off?'Paused':st.op.cat;
+    if(st.op.args.length){
+      const wrap=document.createElement('div');wrap.className='args';
+      st.op.args.forEach((a,j)=>{
+        const lab=document.createElement('label');lab.className='arg';const sp=document.createElement('span');sp.textContent=a.label;let el;
+        if(a.type==='select'){el=document.createElement('select');for(const o of a.options){const opt=document.createElement('option');opt.textContent=o;el.append(opt)}}
+        else{el=document.createElement('input');el.type=a.type==='number'?'number':a.type==='password'?'password':'text';el.autocomplete='off';el.spellcheck=false;el.setAttribute('autocapitalize','off');if(a.type==='number')el.inputMode='numeric'}
+        el.value=st.args[j];
+        const upd=()=>{st.args[j]=el.value;schedule()};el.addEventListener('input',upd);el.addEventListener('change',upd);
+        lab.append(sp,el);wrap.append(lab);
+      });
+      li.querySelector('.step-box').append(wrap);
+    }
+    li.querySelectorAll('[data-a]').forEach(btn=>btn.addEventListener('click',()=>stepAction(i,btn.dataset.a)));
+    recipeEl.append(li);
+  });
+}
+function markSteps(doneUpTo,errIdx){
+  recipeEl.querySelectorAll('.step').forEach((li,i)=>{li.classList.toggle('err',i===errIdx);li.classList.toggle('done',i<doneUpTo&&!recipe[i].off&&i!==errIdx)});
+}
+function isUtf8(b){try{new TextDecoder('utf-8',{fatal:true}).decode(b);return true}catch{return false}}
+
+async function run(){
+  const id=++runId;
+  const inText=inputEl.value,inBytes=by(inText);
+  $('#inMeta').textContent=inText?sizeText([...inText].length,inBytes.length):'';
+  $('#rerunBtn').hidden=!recipe.some(s=>s.op.random&&!s.off);
+  let data=inBytes,errIdx=-1,errMsg='';
+  for(let i=0;i<recipe.length;i++){
+    const st=recipe[i];if(st.off)continue;
+    try{const r=await st.op.fn(data,st.args);data=typeof r==='string'?by(r):r}
+    catch(e){errIdx=i;errMsg=e&&e.message?e.message:String(e);break}
+    if(id!==runId)return;
+  }
+  if(id!==runId)return;
+  markSteps(errIdx<0?recipe.length:errIdx,errIdx);
+  noticeEl.className='notice';noticeEl.textContent='';
+  if(errIdx>=0){
+    outText='';outEl.textContent='';$('#outMeta').textContent='';
+    noticeEl.className='notice err';noticeEl.textContent=`Step ${errIdx+1}, ${recipe[errIdx].op.name}: ${errMsg}`;
+    suggestEl.innerHTML='';return;
+  }
+  if(isUtf8(data)){outText=str(data);$('#outMeta').textContent=outText?sizeText([...outText].length,data.length):''}
+  else{outText=Array.from(data,x=>x.toString(16).padStart(2,'0')).join(' ');$('#outMeta').textContent=`${data.length.toLocaleString()} bytes`;
+    noticeEl.className='notice warn';noticeEl.textContent='The result is raw binary data, so it is shown as hex. Add “To Base64” or “To Hex” to keep it as text.'}
+  const LIMIT=500000;
+  outEl.textContent=outText.length>LIMIT?outText.slice(0,LIMIT)+'\n\n… (display cut short; Copy still copies everything)':outText;
+  renderSuggest(isUtf8(data)?outText:'');
+}
+
+/* Next-step ideas based on what the output looks like */
+const INVERSE={'From Base64':'To Base64','From Hex':'To Hex','From Binary':'To Binary','From Base32':'To Base32','URL decode':'URL encode','HTML entity decode':'HTML entity encode','Unicode unescape':'Unicode escape','From Morse code':'To Morse code','From Decimal bytes':'To Decimal bytes'};
+function detect(s){
+  s=s.trim();const out=[];if(!s||s.length>100000)return out;const ns=s.replace(/\s/g,'');
+  if(/^eyJ[\w-]+\.eyJ[\w-]+\.[\w-]*$/.test(s))out.push('JWT decode');
+  if(/^((25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(25[0-5]|2[0-4]\d|1?\d?\d)\/\d{1,2}$/.test(s))out.push('Subnet calculator');
+  if(/^\d{10}(\d{3})?$/.test(s))out.push('Timestamp → date');
+  if(/^[01\s]+$/.test(s)&&ns.length%8===0&&ns.length>=8)out.push('From Binary');
+  else if(/^(0x)?[0-9a-f]+$/i.test(s.replace(/[\s:,]|0x/gi,''))&&/[a-f]/i.test(s)&&s.replace(/[\s:,]|0x/gi,'').length%2===0&&ns.length>=4)out.push('From Hex');
+  if(ns.length>=8&&/^[A-Za-z0-9+/_=-]+(\r?\n[A-Za-z0-9+/_=-]+)*$/.test(s)&&/^[A-Za-z0-9+/_-]+={0,2}$/.test(ns)&&ns.length%4!==1&&(/=$/.test(ns)||(/[a-z]/.test(ns)&&/[A-Z]/.test(ns)&&/\d|[+/]/.test(ns)))&&!out.includes('JWT decode'))out.push('From Base64');
+  if(ns.length>=8&&/^[A-Z2-7]+=*$/.test(ns)&&/[2-7]/.test(ns))out.push('From Base32');
+  if(/%[0-9a-f]{2}/i.test(s))out.push('URL decode');
+  if(/&(#\d+|#x[0-9a-f]+|[a-z]{2,6});/i.test(s))out.push('HTML entity decode');
+  if(/\\u[0-9a-f]{4}|\\x[0-9a-f]{2}/i.test(s))out.push('Unicode unescape');
+  if(/^[.\-\/\s]+$/.test(s)&&/[.-]{2}/.test(s))out.push('From Morse code');
+  if(/^[\[{]/.test(s)){try{JSON.parse(s);out.push(s.includes('\n')?'JSON minify':'JSON beautify')}catch{}}
+  if(/^https?:\/\/\S+$/i.test(s))out.push('Parse URL');
+  if(/^[\d\s.()+\-*/^%!]+$/.test(s)&&/[\d)]\s*[+\-*/^%]\s*[\d(.]/.test(s)&&!/^\d{4}-\d\d-\d\d/.test(s))out.push('Calculate');
+  if(/(^|[\s.]|\d+\.)(sqrt|sin|cos|tan|log|ln|abs)\(/.test(s))out.includes('Calculate')||out.push('Calculate');
+  if(/hxxps?:\/\/|\[\.\]/i.test(s))out.push('Refang');
+  return out;
+}
+function renderSuggest(text){
+  suggestEl.innerHTML='';
+  const last=[...recipe].reverse().find(s=>!s.off);
+  const ideas=detect(text).filter(n=>!last||(n!==last.op.name&&INVERSE[n]!==last.op.name));
+  if(!ideas.length)return;
+  const lab=document.createElement('span');lab.textContent='Looks like it could use:';suggestEl.append(lab);
+  for(const n of ideas.slice(0,4)){const b=document.createElement('button');b.className='chip';b.textContent='+ '+n;b.onclick=()=>{addStep(n);toast(`Added ${n}`)};suggestEl.append(b)}
+}
+
+/* ===================== Add-operation sheet ===================== */
+let activeCat='All';
+function renderCats(){const c=$('#cats');c.innerHTML='';for(const name of ['All',...CATS]){const b=document.createElement('button');b.className='cat';b.textContent=name;b.setAttribute('aria-pressed',String(name===activeCat));b.onclick=()=>{activeCat=name;renderCats();renderList()};c.append(b)}}
+function renderList(){
+  const q=$('#search').value.trim().toLowerCase(),list=$('#oplist');list.innerHTML='';
+  const hits=OPS.filter(o=>(activeCat==='All'||o.cat===activeCat)&&(!q||(o.name+' '+o.desc+' '+o.cat).toLowerCase().includes(q)));
+  if(!hits.length){const d=document.createElement('div');d.className='nores';d.textContent=`Nothing matches “${q}”. Try a shorter word, like “base” or “hash”.`;list.append(d);return}
+  let cur=null;
+  for(const o of hits){
+    if(o.cat!==cur&&activeCat==='All'){cur=o.cat;const h=document.createElement('h3');h.textContent=cur;list.append(h)}
+    const b=document.createElement('button');b.className='opitem';const t=document.createElement('b');t.textContent=o.name;const d=document.createElement('span');d.textContent=o.desc;b.append(t,d);
+    b.onclick=()=>{addStep(o.name);closeSheet();toast(`Added ${o.name}`)};list.append(b);
+  }
+}
+function openSheet(){$('#sheet').hidden=false;$('#search').value='';renderCats();renderList();$('#oplist').scrollTop=0;setTimeout(()=>$('#search').focus({preventScroll:true}),50)}
+function closeSheet(){$('#sheet').hidden=true;$('#addBtn').focus({preventScroll:true})}
+
+/* ===================== Wiring ===================== */
+inputEl.addEventListener('input',schedule);
+$('#addBtn').onclick=openSheet;$('#closeSheet').onclick=closeSheet;$('#backdrop').onclick=closeSheet;
+$('#search').addEventListener('input',renderList);
+$('#search').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();const f=$('#oplist .opitem');if(f)f.click()}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#sheet').hidden)closeSheet()});
+$('#clearInBtn').onclick=()=>{inputEl.value='';schedule();inputEl.focus()};
+$('#clearRecBtn').onclick=()=>{if(!recipe.length)return;recipe=[];renderRecipe();schedule();toast('Recipe cleared')};
+$('#rerunBtn').onclick=run;
+$('#pasteBtn').onclick=async()=>{if(window.AndroidBridge){inputEl.value=AndroidBridge.paste();schedule();return}try{inputEl.value=await navigator.clipboard.readText();schedule()}catch{toast('Paste is blocked here. Long-press the input box and choose Paste.')}};
+$('#copyBtn').onclick=async()=>{if(!outText){toast('Nothing to copy yet');return}
+  if(window.AndroidBridge){AndroidBridge.copy(outText);toast('Copied');return}
+  try{await navigator.clipboard.writeText(outText);toast('Copied')}
+  catch{const t=document.createElement('textarea');t.value=outText;document.body.append(t);t.select();try{document.execCommand('copy');toast('Copied')}catch{toast('Copy is blocked here. Select the output and copy it.')}t.remove()}};
+$('#moveBtn').onclick=()=>{if(!outText){toast('Nothing to move yet');return}inputEl.value=outText;recipe=[];renderRecipe();schedule();toast('Output moved to input, recipe cleared');window.scrollTo({top:0,behavior:'smooth'})};
+
+/* Android back button: close the sheet first, otherwise let the app close */
+window.handleBack=()=>{if(!$('#sheet').hidden){closeSheet();return true}return false};
+
+renderRecipe();run();
+</script>
+</body>
+</html>
